@@ -1,0 +1,781 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Transformar Orçamento → Pedido de Compra</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,600;0,9..40,700;1,9..40,400&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --gold: #c4a225;
+    --gold-dark: #a3861e;
+    --bg: #0f1117;
+    --surface: #1a1d27;
+    --surface-2: #232733;
+    --border: #2e3344;
+    --text: #e8e9ed;
+    --text-dim: #8b8fa3;
+    --success: #34d399;
+    --error: #f87171;
+  }
+
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 40px 20px;
+  }
+
+  .container {
+    max-width: 640px;
+    width: 100%;
+  }
+
+  .header {
+    text-align: center;
+    margin-bottom: 48px;
+  }
+
+  .header h1 {
+    font-size: 28px;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+    margin-bottom: 8px;
+  }
+
+  .header h1 span {
+    color: var(--gold);
+  }
+
+  .header p {
+    color: var(--text-dim);
+    font-size: 15px;
+    line-height: 1.5;
+  }
+
+  .changes-list {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-top: 20px;
+  }
+
+  .change-item {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 14px;
+    font-size: 12px;
+  }
+
+  .change-item .from {
+    color: var(--error);
+    text-decoration: line-through;
+    opacity: 0.7;
+    display: block;
+    margin-bottom: 4px;
+  }
+
+  .change-item .to {
+    color: var(--success);
+    font-weight: 600;
+    display: block;
+  }
+
+  .change-item .arrow {
+    color: var(--text-dim);
+    margin: 2px 0;
+    display: block;
+    font-size: 10px;
+  }
+
+  /* Drop Zone */
+  .drop-zone {
+    border: 2px dashed var(--border);
+    border-radius: 16px;
+    padding: 60px 40px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    background: var(--surface);
+    position: relative;
+    overflow: hidden;
+    margin-bottom: 24px;
+  }
+
+  .drop-zone::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(circle at center, rgba(196, 162, 37, 0.05) 0%, transparent 70%);
+    pointer-events: none;
+  }
+
+  .drop-zone:hover, .drop-zone.drag-over {
+    border-color: var(--gold);
+    background: var(--surface-2);
+  }
+
+  .drop-zone.drag-over {
+    transform: scale(1.01);
+  }
+
+  .drop-icon {
+    width: 56px;
+    height: 56px;
+    margin: 0 auto 16px;
+    background: var(--surface-2);
+    border-radius: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--border);
+  }
+
+  .drop-icon svg {
+    width: 28px;
+    height: 28px;
+    stroke: var(--gold);
+  }
+
+  .drop-zone h3 {
+    font-size: 16px;
+    font-weight: 600;
+    margin-bottom: 6px;
+  }
+
+  .drop-zone p {
+    color: var(--text-dim);
+    font-size: 13px;
+  }
+
+  .drop-zone input[type="file"] {
+    display: none;
+  }
+
+  /* Status */
+  .status {
+    display: none;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px 24px;
+    margin-bottom: 16px;
+  }
+
+  .status.show { display: block; }
+
+  .status.processing {
+    border-color: var(--gold);
+  }
+
+  .status.success {
+    border-color: var(--success);
+  }
+
+  .status.error {
+    border-color: var(--error);
+  }
+
+  .status-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+  }
+
+  .status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--gold);
+    flex-shrink: 0;
+  }
+
+  .status.processing .status-dot {
+    animation: pulse 1.2s infinite;
+  }
+
+  .status.success .status-dot { background: var(--success); }
+  .status.error .status-dot { background: var(--error); }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.4; transform: scale(0.8); }
+  }
+
+  .status-title {
+    font-weight: 600;
+    font-size: 14px;
+  }
+
+  .status-detail {
+    color: var(--text-dim);
+    font-size: 13px;
+    margin-left: 18px;
+  }
+
+  /* Log */
+  .log {
+    display: none;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px 20px;
+    margin-bottom: 16px;
+    font-size: 12px;
+    font-family: 'DM Mono', monospace;
+    max-height: 200px;
+    overflow-y: auto;
+  }
+
+  .log.show { display: block; }
+
+  .log-line {
+    padding: 3px 0;
+    color: var(--text-dim);
+  }
+
+  .log-line.ok { color: var(--success); }
+  .log-line.warn { color: var(--gold); }
+  .log-line.err { color: var(--error); }
+
+  /* Download button */
+  .download-btn {
+    display: none;
+    width: 100%;
+    padding: 16px;
+    background: linear-gradient(135deg, var(--gold), var(--gold-dark));
+    color: #000;
+    border: none;
+    border-radius: 12px;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 15px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.2s;
+    letter-spacing: 0.3px;
+  }
+
+  .download-btn.show { display: block; }
+
+  .download-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 8px 24px rgba(196, 162, 37, 0.3);
+  }
+
+  .footer {
+    margin-top: 48px;
+    text-align: center;
+    color: var(--text-dim);
+    font-size: 12px;
+    opacity: 0.6;
+  }
+</style>
+</head>
+<body>
+
+<div class="container">
+  <div class="header">
+    <h1>Orçamento → <span>Pedido de Compra</span></h1>
+    <p>Transforme orçamentos do sistema em pedidos de compra automaticamente.</p>
+
+    <div class="changes-list">
+      <div class="change-item">
+        <span class="from">ORÇAMENTO DE VENDA</span>
+        <span class="arrow">↓</span>
+        <span class="to">PEDIDO DE COMPRA</span>
+      </div>
+      <div class="change-item">
+        <span class="from">ITENS DO ORÇAMENTO</span>
+        <span class="arrow">↓</span>
+        <span class="to">ITENS DO PEDIDO</span>
+      </div>
+      <div class="change-item">
+        <span class="from">PRAZO DE ENTREGA: 20</span>
+        <span class="arrow">↓</span>
+        <span class="to">PRAZO DE ENTREGA: 25 DIAS UTEIS</span>
+      </div>
+      <div class="change-item">
+        <span class="from">VALIDADE: 0 DIAS</span>
+        <span class="arrow">↓</span>
+        <span class="to">GARANTIA: 3 ANOS</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="drop-zone" id="dropZone">
+    <div class="drop-icon">
+      <svg viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+        <polyline points="14 2 14 8 20 8"/>
+        <line x1="12" y1="18" x2="12" y2="12"/>
+        <polyline points="9 15 12 12 15 15"/>
+      </svg>
+    </div>
+    <h3>Arraste o PDF do orçamento aqui</h3>
+    <p>ou clique para selecionar o arquivo</p>
+    <input type="file" id="fileInput" accept=".pdf">
+  </div>
+
+  <div class="status" id="status">
+    <div class="status-header">
+      <div class="status-dot"></div>
+      <div class="status-title" id="statusTitle">Processando...</div>
+    </div>
+    <div class="status-detail" id="statusDetail"></div>
+  </div>
+
+  <div class="log" id="log"></div>
+
+  <button class="download-btn" id="downloadBtn">⬇ Baixar Pedido de Compra</button>
+
+  <div class="footer">
+    Persianas em Casa — Ferramenta de conversão de documentos
+  </div>
+</div>
+
+<script>
+const { PDFDocument, rgb, StandardFonts } = PDFLib;
+
+// ========================
+// CONFIGURAÇÕES
+// ========================
+const CONFIG = {
+  prazoEntrega: '25 DIAS UTEIS',
+  garantia: '3 ANOS',
+};
+
+// ========================
+// UI HELPERS
+// ========================
+const $ = id => document.getElementById(id);
+const dropZone = $('dropZone');
+const fileInput = $('fileInput');
+const status = $('status');
+const statusTitle = $('statusTitle');
+const statusDetail = $('statusDetail');
+const logEl = $('log');
+const downloadBtn = $('downloadBtn');
+
+let outputBlob = null;
+let outputFilename = '';
+
+function log(msg, type = '') {
+  logEl.classList.add('show');
+  const line = document.createElement('div');
+  line.className = 'log-line ' + type;
+  line.textContent = msg;
+  logEl.appendChild(line);
+  logEl.scrollTop = logEl.scrollHeight;
+}
+
+function setStatus(title, detail, type) {
+  status.className = 'status show ' + type;
+  statusTitle.textContent = title;
+  statusDetail.textContent = detail || '';
+}
+
+// ========================
+// DRAG & DROP
+// ========================
+dropZone.addEventListener('click', () => fileInput.click());
+
+dropZone.addEventListener('dragover', e => {
+  e.preventDefault();
+  dropZone.classList.add('drag-over');
+});
+
+dropZone.addEventListener('dragleave', () => {
+  dropZone.classList.remove('drag-over');
+});
+
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (file && file.type === 'application/pdf') {
+    processFile(file);
+  }
+});
+
+fileInput.addEventListener('change', e => {
+  const file = e.target.files[0];
+  if (file) processFile(file);
+});
+
+downloadBtn.addEventListener('click', () => {
+  if (!outputBlob) return;
+  const url = URL.createObjectURL(outputBlob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = outputFilename;
+  a.click();
+  URL.revokeObjectURL(url);
+});
+
+// ========================
+// PDF PROCESSING
+// ========================
+async function processFile(file) {
+  logEl.innerHTML = '';
+  logEl.classList.remove('show');
+  downloadBtn.classList.remove('show');
+  outputBlob = null;
+
+  setStatus('Processando...', file.name, 'processing');
+  log('Carregando PDF: ' + file.name);
+
+  try {
+    let arrayBuffer = await file.arrayBuffer();
+    let bytes = new Uint8Array(arrayBuffer);
+
+    // Check for HTML header and skip it
+    const pdfHeader = findPDFHeader(bytes);
+    if (pdfHeader > 0) {
+      log(`Cabeçalho HTML detectado (${pdfHeader} bytes), removendo...`, 'warn');
+      bytes = bytes.slice(pdfHeader);
+      arrayBuffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+    }
+
+    const pdfDoc = await PDFDocument.load(arrayBuffer, { ignoreEncryption: true });
+    const pages = pdfDoc.getPages();
+    log(`PDF carregado: ${pages.length} página(s)`, 'ok');
+
+    // Embed fonts
+    const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+    const fontRegular = await pdfDoc.embedFont(StandardFonts.Helvetica);
+
+    // Extract client name from the PDF text (we'll try to get it from operators)
+    let clientName = 'Cliente';
+
+    // Process each page
+    for (let i = 0; i < pages.length; i++) {
+      const page = pages[i];
+      const { width, height } = page.getSize();
+      log(`Página ${i + 1}: ${Math.round(width)} x ${Math.round(height)} pts`);
+
+      // We need to find text positions. Since pdf-lib can't easily extract text positions,
+      // we'll use a coordinate-based approach for A4 pages (595.28 x 841.89)
+      
+      if (i === 0) {
+        // Try to extract text to find client name
+        clientName = await extractClientName(pdfDoc, page, i);
+        log(`Cliente: ${clientName}`, 'ok');
+
+        // Apply all 4 replacements on page 1
+        applyReplacements(page, width, height, fontBold, fontRegular);
+      }
+
+      if (i === pages.length - 1) {
+        // Add Observações on the last page
+        addObservacoes(page, width, height, fontBold, fontRegular);
+      }
+    }
+
+    // Save modified PDF
+    const modifiedBytes = await pdfDoc.save();
+    const safeName = clientName.replace(/[<>:"/\\|?*]/g, '').trim();
+    outputFilename = `Pedido de compra ${safeName}.pdf`;
+    outputBlob = new Blob([modifiedBytes], { type: 'application/pdf' });
+
+    log(`Arquivo gerado: ${outputFilename}`, 'ok');
+    setStatus('Concluído!', outputFilename, 'success');
+    downloadBtn.textContent = `⬇ Baixar: ${outputFilename}`;
+    downloadBtn.classList.add('show');
+
+  } catch (err) {
+    console.error(err);
+    log('ERRO: ' + err.message, 'err');
+    setStatus('Erro ao processar', err.message, 'error');
+  }
+}
+
+function findPDFHeader(bytes) {
+  // Look for %PDF marker
+  for (let i = 0; i < Math.min(bytes.length, 1000); i++) {
+    if (bytes[i] === 0x25 && bytes[i+1] === 0x50 && bytes[i+2] === 0x44 && bytes[i+3] === 0x46) {
+      return i;
+    }
+  }
+  return 0;
+}
+
+async function extractClientName(pdfDoc, page, pageIndex) {
+  // Since pdf-lib doesn't have text extraction, we'll try to parse
+  // the content stream manually for the client name
+  try {
+    const ref = page.node.get(PDFLib.PDFName.of('Contents'));
+    if (!ref) return 'Cliente';
+    
+    const contentsObj = pdfDoc.context.lookup(ref);
+    if (!contentsObj) return 'Cliente';
+    
+    let streamData;
+    if (contentsObj.constructor.name === 'PDFRawStream' || contentsObj.constructor.name === 'PDFFlateStream') {
+      // Try to get decoded contents
+      try {
+        streamData = contentsObj.decodeContents ? 
+          new TextDecoder('latin1').decode(contentsObj.decodeContents()) :
+          new TextDecoder('latin1').decode(contentsObj.getContents());
+      } catch(e) {
+        return 'Cliente';
+      }
+    } else if (contentsObj.constructor.name === 'PDFArray') {
+      // Multiple content streams
+      let combined = '';
+      for (let i = 0; i < contentsObj.size(); i++) {
+        const streamRef = contentsObj.get(i);
+        const stream = pdfDoc.context.lookup(streamRef);
+        if (stream) {
+          try {
+            const decoded = stream.decodeContents ? 
+              new TextDecoder('latin1').decode(stream.decodeContents()) :
+              new TextDecoder('latin1').decode(stream.getContents());
+            combined += decoded;
+          } catch(e) {}
+        }
+      }
+      streamData = combined;
+    }
+    
+    if (!streamData) return 'Cliente';
+    
+    // Look for CLIENTE: in the text operations
+    // PDF text is usually in (text) Tj or [(text)] TJ format
+    const textParts = [];
+    const tjRegex = /\(([^)]*)\)\s*Tj/g;
+    let match;
+    while ((match = tjRegex.exec(streamData)) !== null) {
+      textParts.push(match[1]);
+    }
+    
+    // Also try TJ arrays
+    const tjArrayRegex = /\[([^\]]*)\]\s*TJ/g;
+    while ((match = tjArrayRegex.exec(streamData)) !== null) {
+      const inner = match[1];
+      const strRegex = /\(([^)]*)\)/g;
+      let strMatch;
+      let combined = '';
+      while ((strMatch = strRegex.exec(inner)) !== null) {
+        combined += strMatch[1];
+      }
+      if (combined) textParts.push(combined);
+    }
+    
+    // Find CLIENTE: in extracted text
+    const fullText = textParts.join(' ');
+    const clientMatch = fullText.match(/CLIENTE:\s*(.+?)(?:\s*DATA:|\s*$)/i);
+    if (clientMatch) {
+      let name = clientMatch[1].trim();
+      // Convert to title case
+      name = name.replace(/\b\w+/g, w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
+      return name;
+    }
+    
+  } catch(e) {
+    console.warn('Could not extract client name:', e);
+  }
+  
+  return 'Cliente';
+}
+
+function applyReplacements(page, width, height, fontBold, fontRegular) {
+  // A4 page: 595.28 x 841.89
+  // Coordinates are from bottom-left in pdf-lib
+  
+  // The positions below are calibrated for the specific PDF layout from Persianas em Casa
+  // We use relative positions based on the document structure visible in the screenshots
+
+  // === 1. "ORÇAMENTO DE VENDA Nº:" → "PEDIDO DE COMPRA Nº:" (keep number 000493) ===
+  // Title bar rect: x0=28.62, top=113.66, bot=142.36 (pdfplumber)
+  // Text ends at x=367.79, number "000493" starts at x=372.26
+  const titleY_bottom = height - 136.33;
+  const titleFontSize = 14.29;
+  
+  // Cover only left part of title bar (before the number)
+  page.drawRectangle({
+    x: 28.62,
+    y: height - 142.36,
+    width: 343,
+    height: 28.70,
+    color: rgb(0.753, 0.753, 0.753),  // exact original gray
+    borderWidth: 0,
+  });
+  
+  // Draw "PEDIDO DE COMPRA Nº:" ending right before number
+  const titleText = 'PEDIDO DE COMPRA Nº:';
+  const titleWidth = fontBold.widthOfTextAtSize(titleText, titleFontSize);
+  const titleX = 372.26 - titleWidth - 4;
+  
+  page.drawText(titleText, {
+    x: titleX,
+    y: titleY_bottom,
+    size: titleFontSize,
+    font: fontBold,
+    color: rgb(0, 0, 0),
+  });
+
+  // === 2. PRAZO DE ENTREGA: "20" → "25 DIAS UTEIS" ===
+  // Prazo bg rect: x0=454.83, top=183.92, bot=204.70
+  const prazoY_bottom = height - 198.79;
+  const prazoFontSize = 7.7;
+  
+  page.drawRectangle({
+    x: 454.83,
+    y: height - 204.70,
+    width: 111.83,
+    height: 20.78,
+    color: rgb(1, 1, 1),  // white
+    borderWidth: 0,
+  });
+  
+  page.drawText(CONFIG.prazoEntrega, {
+    x: 457.85,
+    y: prazoY_bottom,
+    size: prazoFontSize,
+    font: fontRegular,
+    color: rgb(0, 0, 0),
+  });
+
+  // === 3. "VALIDADE: 0 DIAS" → "GARANTIA: 3 ANOS" ===
+  // Label cell: x0=59.51..132.44, value cell: x0=132.44..566.66, top=225.48, bot=246.26
+  const validadeY_bottom = height - 240.35;
+  const validadeFontSize = 7.7;
+  
+  // Cover all 3 cells of the row with their original backgrounds
+  // Left margin (gray)
+  page.drawRectangle({
+    x: 28.62,
+    y: height - 246.26,
+    width: 30.88,
+    height: 20.78,
+    color: rgb(0.937, 0.937, 0.937),
+    borderWidth: 0,
+  });
+  // Label cell (white)
+  page.drawRectangle({
+    x: 59.51,
+    y: height - 246.26,
+    width: 72.93,
+    height: 20.78,
+    color: rgb(1, 1, 1),
+    borderWidth: 0,
+  });
+  // Value cell (gray)
+  page.drawRectangle({
+    x: 132.44,
+    y: height - 246.26,
+    width: 80,
+    height: 20.78,
+    color: rgb(0.937, 0.937, 0.937),
+    borderWidth: 0,
+  });
+  
+  page.drawText('GARANTIA:', {
+    x: 87.37,
+    y: validadeY_bottom,
+    size: validadeFontSize,
+    font: fontBold,
+    color: rgb(0, 0, 0),
+  });
+  
+  const garantiaLabelWidth = fontBold.widthOfTextAtSize('GARANTIA: ', validadeFontSize);
+  page.drawText(CONFIG.garantia, {
+    x: 87.37 + garantiaLabelWidth,
+    y: validadeY_bottom,
+    size: validadeFontSize,
+    font: fontRegular,
+    color: rgb(0, 0, 0),
+  });
+
+  // === 4. "ITENS DO ORÇAMENTO" → "ITENS DO PEDIDO" ===
+  // Gold bar: x0=28.63, top=273.36, bot=294.49
+  const itensY_bottom = height - 288.48;
+  const itensFontSize = 7.82;
+  
+  page.drawRectangle({
+    x: 28.63,
+    y: height - 294.49,
+    width: 538.02,
+    height: 21.13,
+    color: rgb(0.722, 0.525, 0.043),  // exact original gold
+    borderWidth: 0,
+  });
+  
+  const itensText = 'ITENS DO PEDIDO';
+  const itensWidth = fontBold.widthOfTextAtSize(itensText, itensFontSize);
+  const itensX = (width - itensWidth) / 2;
+  
+  page.drawText(itensText, {
+    x: itensX,
+    y: itensY_bottom,
+    size: itensFontSize,
+    font: fontBold,
+    color: rgb(1, 1, 1),
+  });
+
+  log('  ✓ ORÇAMENTO DE VENDA → PEDIDO DE COMPRA', 'ok');
+  log('  ✓ PRAZO DE ENTREGA → ' + CONFIG.prazoEntrega, 'ok');
+  log('  ✓ VALIDADE → GARANTIA: ' + CONFIG.garantia, 'ok');
+  log('  ✓ ITENS DO ORÇAMENTO → ITENS DO PEDIDO', 'ok');
+}
+
+function addObservacoes(page, width, height, fontBold, fontRegular) {
+  const startY = height - 220;
+  const lineHeight = 14;
+  const textX = 45;
+  const textSize = 9;
+
+  // Title "Observações:" centered
+  const obsTitle = 'Observações:';
+  const titleWidth = fontBold.widthOfTextAtSize(obsTitle, 14);
+  page.drawText(obsTitle, {
+    x: (width - titleWidth) / 2,
+    y: startY,
+    size: 14,
+    font: fontBold,
+    color: rgb(0, 0, 0),
+  });
+
+  const lines = [
+    { bold: true,  text: 'Informações adicionais:' },
+    { bold: false, text: 'Nota fiscal será entregue junto com o produto no ato da instalação' },
+    { bold: false, text: 'Garantia de 3 anos em todos os produtos' },
+    { bold: false, text: 'Prazo de entrega de 10 a 15 dias úteis' },
+    { bold: false, text: 'Orientações de instalação: Instalação será agendada dentro do horário comercial' },
+    { bold: false, text: '(período: manhã ou tarde)' },
+    { bold: false, text: 'O cancelamento ou reagendamento pode ser feito até 24 horas antes.' },
+    { bold: false, text: 'Não cobramos custo adicional para mão de obra e instalação do produto em SP-SP' },
+    { bold: false, text: 'Estão excluídos os serviços de alvenaria, instalações de rede elétrica, papel de parede,' },
+    { bold: false, text: 'cimento e frete de peças para grandes vão' },
+    { bold: false, text: 'No caso do instalador não conseguir efetuar a instalação por algum motivo técnico e' },
+    { bold: false, text: 'precise de reagendamento, será cobrada uma taxa de R$ 120,00.' },
+    { bold: false, text: 'O instalador pode ficar esperando até 15 minutos para entrar no cliente.' },
+  ];
+
+  let currentY = startY - 30;
+  for (const line of lines) {
+    page.drawText(line.text, {
+      x: textX,
+      y: currentY,
+      size: textSize,
+      font: line.bold ? fontBold : fontRegular,
+      color: rgb(0, 0, 0),
+    });
+    currentY -= lineHeight;
+  }
+
+  log('  ✓ Observações adicionadas na última página', 'ok');
+}
+</script>
+</body>
+</html>
