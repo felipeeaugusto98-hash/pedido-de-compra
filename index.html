@@ -474,12 +474,13 @@ async function processFile(file) {
         // Apply all 4 replacements on page 1
         applyReplacements(page, width, height, fontBold, fontRegular);
       }
-
-      if (i === pages.length - 1) {
-        // Add Observações on the last page
-        addObservacoes(page, width, height, fontBold, fontRegular);
-      }
     }
+
+    // Add Observações on a new page at the end
+    const lastPage = pages[pages.length - 1];
+    const { width: lastW, height: lastH } = lastPage.getSize();
+    const obsPage = pdfDoc.addPage([lastW, lastH]);
+    addObservacoes(obsPage, lastW, lastH, fontBold, fontRegular);
 
     // Save modified PDF
     const modifiedBytes = await pdfDoc.save();
@@ -730,7 +731,7 @@ function applyReplacements(page, width, height, fontBold, fontRegular) {
 }
 
 function addObservacoes(page, width, height, fontBold, fontRegular) {
-  const startY = height - 220;
+  const startY = height - 80;  // Start near top of page
   const lineHeight = 14;
   const textX = 45;
   const textSize = 9;
