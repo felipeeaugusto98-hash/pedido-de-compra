@@ -476,11 +476,26 @@ async function processFile(file) {
       }
     }
 
-    // Add Observações on a new page at the end
+    // Add Observações - check if there's space on the last page
     const lastPage = pages[pages.length - 1];
     const { width: lastW, height: lastH } = lastPage.getSize();
-    const obsPage = pdfDoc.addPage([lastW, lastH]);
-    addObservacoes(obsPage, lastW, lastH, fontBold, fontRegular);
+    
+    // Find the lowest content on the last page by scanning content streams
+    const lowestY = await findLowestContent(pdfDoc, lastPage);
+    const OBS_BLOCK_HEIGHT = 250;  // ~232pts needed + margin
+    const FOOTER_MARGIN = 50;     // space above footer
+    
+    if (lowestY > OBS_BLOCK_HEIGHT + FOOTER_MARGIN) {
+      // Enough space on last page - place observações below existing content
+      const obsStartY = lowestY - 40;  // 40pts gap below last content
+      log(`Espaço disponível na última página: ${Math.round(lowestY)}pts → inserindo ali`, 'ok');
+      addObservacoes(lastPage, lastW, lastH, fontBold, fontRegular, obsStartY);
+    } else {
+      // Not enough space - add new page
+      log('Sem espaço na última página → criando página extra', 'warn');
+      const obsPage = pdfDoc.addPage([lastW, lastH]);
+      addObservacoes(obsPage, lastW, lastH, fontBold, fontRegular, lastH - 80);
+    }
 
     // Save modified PDF
     const modifiedBytes = await pdfDoc.save();
@@ -508,6 +523,60 @@ function findPDFHeader(bytes) {
     }
   }
   return 0;
+}
+
+async function findLowestContent(pdfDoc, page) {
+  // Find the lowest Y coordinate (in pdf-lib bottom-up coords) that has content
+  // by parsing the content stream for drawing operations
+  try {
+    const ref = page.node.get(PDFLib.PDFName.of('Contents'));
+    if (!ref) return 0;
+    
+    const contentsObj = pdfDoc.context.lookup(ref);
+    if (!contentsObj) return 0;
+    
+    let streamData = '';
+    try {
+      const decoded = contentsObj.decodeContents ? 
+        new TextDecoder('latin1').decode(contentsObj.decodeContents()) :
+        new TextDecoder('latin1').decode(contentsObj.getContents());
+      streamData = decoded;
+    } catch(e) {
+      return 0;
+    }
+    
+    if (!streamData) return 0;
+    
+    const { height } = page.getSize();
+    let lowestY = height;  // Start from top
+    
+    // Find rectangle operations: x y w h re
+    // These give us the lowest drawn rectangles
+    const reRegex = /([\d.]+)\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)\s+re/g;
+    let match;
+    while ((match = reRegex.exec(streamData)) !== null) {
+      const y = parseFloat(match[2]);
+      const h = parseFloat(match[4]);
+      const bottomOfRect = Math.min(y, y + h);  // h can be negative
+      if (bottomOfRect < lowestY && bottomOfRect > 20) {  // ignore footer area
+        lowestY = bottomOfRect;
+      }
+    }
+    
+    // Find text position operations: x y Td or x y Tm
+    const tdRegex = /([\d.]+)\s+([\d.]+)\s+Td/g;
+    while ((match = tdRegex.exec(streamData)) !== null) {
+      const y = parseFloat(match[2]);
+      if (y < lowestY && y > 20) {
+        lowestY = y;
+      }
+    }
+    
+    return lowestY;
+  } catch(e) {
+    console.warn('Could not find lowest content:', e);
+    return 0;
+  }
 }
 
 async function extractClientName(pdfDoc, page, pageIndex) {
@@ -730,8 +799,7 @@ function applyReplacements(page, width, height, fontBold, fontRegular) {
   log('  ✓ ITENS DO ORÇAMENTO → ITENS DO PEDIDO', 'ok');
 }
 
-function addObservacoes(page, width, height, fontBold, fontRegular) {
-  const startY = height - 80;  // Start near top of page
+function addObservacoes(page, width, height, fontBold, fontRegular, startY) {
   const lineHeight = 14;
   const textX = 45;
   const textSize = 9;
@@ -751,7 +819,8 @@ function addObservacoes(page, width, height, fontBold, fontRegular) {
     { bold: true,  text: 'Informações adicionais:' },
     { bold: false, text: 'Nota fiscal será entregue junto com o produto no ato da instalação' },
     { bold: false, text: 'Garantia de 3 anos em todos os produtos' },
-    { bold: false, text: 'Prazo de entrega de 10 a 15 dias úteis' },
+    { bold: false, text: 'Prazo de entrega de 15 a 20 dias úteis para persianas' },
+    { bold: false, text: 'Prazo de entrega de 20 a 25 dias úteis para cortinas' },
     { bold: false, text: 'Orientações de instalação: Instalação será agendada dentro do horário comercial' },
     { bold: false, text: '(período: manhã ou tarde)' },
     { bold: false, text: 'O cancelamento ou reagendamento pode ser feito até 24 horas antes.' },
