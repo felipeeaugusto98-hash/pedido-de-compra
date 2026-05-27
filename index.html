@@ -681,22 +681,24 @@ function applyReplacements(page, width, height, fontBold, fontRegular) {
     color: rgb(0, 0, 0),
   });
 
-  // === 2. PRAZO DE ENTREGA: "20" → "25 DIAS UTEIS" ===
-  // Prazo bg rect: x0=454.83, top=183.92, bot=204.70
+  // === 2. PRAZO DE ENTREGA value → "15 A 20 DIAS UTEIS" ===
+  // The value cell spans from x=421.35 to x=566.66 (top=183.92, bot=204.70)
+  // Value "20" can be at x=424 or x=457 depending on the PDF variant
   const prazoY_bottom = height - 198.79;
   const prazoFontSize = 7.7;
   
+  // Cover the ENTIRE value cell (from 421 to 567)
   page.drawRectangle({
-    x: 454.83,
+    x: 421.35,
     y: height - 204.70,
-    width: 111.83,
+    width: 145.31,
     height: 20.78,
     color: rgb(1, 1, 1),  // white
     borderWidth: 0,
   });
   
   page.drawText(CONFIG.prazoEntrega, {
-    x: 457.85,
+    x: 424,
     y: prazoY_bottom,
     size: prazoFontSize,
     font: fontRegular,
@@ -704,12 +706,14 @@ function applyReplacements(page, width, height, fontBold, fontRegular) {
   });
 
   // === 3. "VALIDADE: 0 DIAS" → "GARANTIA: 3 ANOS" ===
-  // Label cell: x0=59.51..132.44, value cell: x0=132.44..566.66, top=225.48, bot=246.26
+  // Full row spans x=28.62 to x=566.66, top=225.48, bot=246.26
+  // VALIDADE text can be at x=87 or x=147 depending on PDF variant
+  // "0 DIAS" can extend to x=219
   const validadeY_bottom = height - 240.35;
   const validadeFontSize = 7.7;
   
-  // Cover all 3 cells of the row with their original backgrounds
-  // Left margin (gray)
+  // Cover the ENTIRE row with original cell backgrounds
+  // Left margin (gray): x=28.62 to 59.50
   page.drawRectangle({
     x: 28.62,
     y: height - 246.26,
@@ -718,20 +722,21 @@ function applyReplacements(page, width, height, fontBold, fontRegular) {
     color: rgb(0.937, 0.937, 0.937),
     borderWidth: 0,
   });
-  // Label cell (white)
+  // Label + value area (white + gray): x=59.51 to 566.66
+  // Cover everything with white first, then gray over value area
   page.drawRectangle({
     x: 59.51,
     y: height - 246.26,
-    width: 72.93,
+    width: 507.15,
     height: 20.78,
     color: rgb(1, 1, 1),
     borderWidth: 0,
   });
-  // Value cell (gray)
+  // Gray over value area (from x=192.99 to end, matching original cell)
   page.drawRectangle({
-    x: 132.44,
+    x: 192.99,
     y: height - 246.26,
-    width: 80,
+    width: 373.67,
     height: 20.78,
     color: rgb(0.937, 0.937, 0.937),
     borderWidth: 0,
