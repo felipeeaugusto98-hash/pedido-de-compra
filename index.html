@@ -302,7 +302,7 @@
       <div class="change-item">
         <span class="from">PRAZO DE ENTREGA: 20</span>
         <span class="arrow">↓</span>
-        <span class="to">PRAZO DE ENTREGA: 25 DIAS UTEIS</span>
+        <span class="to">PRAZO DE ENTREGA: 15 A 20 DIAS UTEIS</span>
       </div>
       <div class="change-item">
         <span class="from">VALIDADE: 0 DIAS</span>
@@ -350,7 +350,7 @@ const { PDFDocument, rgb, StandardFonts } = PDFLib;
 // CONFIGURAÇÕES
 // ========================
 const CONFIG = {
-  prazoEntrega: '25 DIAS UTEIS',
+  prazoEntrega: '15 A 20 DIAS UTEIS',
   garantia: '3 ANOS',
 };
 
@@ -806,8 +806,7 @@ function addObservacoes(page, width, height, fontBold, fontRegular, startY) {
     { bold: true,  text: 'Informações adicionais:' },
     { bold: false, text: 'Nota fiscal será entregue junto com o produto no ato da instalação' },
     { bold: false, text: 'Garantia de 3 anos em todos os produtos' },
-    { bold: false, text: 'Prazo de entrega de 15 a 20 dias úteis para persianas' },
-    { bold: false, text: 'Prazo de entrega de 20 a 25 dias úteis para cortinas' },
+    { bold: false, text: 'Prazo de entrega de 15 a 20 dias úteis' },
     { bold: false, text: 'Orientações de instalação: Instalação será agendada dentro do horário comercial' },
     { bold: false, text: '(período: manhã ou tarde)' },
     { bold: false, text: 'O cancelamento ou reagendamento pode ser feito até 24 horas antes.' },
