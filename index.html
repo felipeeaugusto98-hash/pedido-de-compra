@@ -97,6 +97,34 @@
     font-size: 10px;
   }
 
+  .edit-input {
+    background: transparent;
+    border: 1px solid var(--success);
+    border-radius: 6px;
+    color: var(--success);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 4px 8px;
+    width: 100%;
+    text-align: center;
+    outline: none;
+    transition: all 0.2s;
+  }
+
+  .edit-input:focus {
+    border-color: var(--gold);
+    color: var(--gold);
+    box-shadow: 0 0 8px rgba(196, 162, 37, 0.2);
+  }
+
+  .edit-hint {
+    color: var(--text-dim);
+    font-size: 11px;
+    margin-top: 12px;
+    opacity: 0.7;
+  }
+
   /* Drop Zone */
   .drop-zone {
     border: 2px dashed var(--border);
@@ -299,17 +327,18 @@
         <span class="arrow">↓</span>
         <span class="to">ITENS DO PEDIDO</span>
       </div>
-      <div class="change-item">
-        <span class="from">PRAZO DE ENTREGA: 20</span>
+      <div class="change-item editable">
+        <span class="from">PRAZO DE ENTREGA</span>
         <span class="arrow">↓</span>
-        <span class="to">PRAZO DE ENTREGA: 15 A 20 DIAS UTEIS</span>
+        <input type="text" id="inputPrazo" value="15 A 20 DIAS UTEIS" class="edit-input">
       </div>
-      <div class="change-item">
+      <div class="change-item editable">
         <span class="from">VALIDADE: 0 DIAS</span>
         <span class="arrow">↓</span>
-        <span class="to">GARANTIA: 3 ANOS</span>
+        <input type="text" id="inputGarantia" value="3 ANOS" class="edit-input" placeholder="Ex: 3 ANOS">
       </div>
     </div>
+    <p class="edit-hint">✏️ Clique nos campos verdes para editar antes de processar</p>
   </div>
 
   <div class="drop-zone" id="dropZone">
@@ -347,12 +376,14 @@
 const { PDFDocument, rgb, StandardFonts } = PDFLib;
 
 // ========================
-// CONFIGURAÇÕES
+// CONFIGURAÇÕES (lidas dos campos editáveis)
 // ========================
-const CONFIG = {
-  prazoEntrega: '15 A 20 DIAS UTEIS',
-  garantia: '3 ANOS',
-};
+function getConfig() {
+  return {
+    prazoEntrega: document.getElementById('inputPrazo').value.trim() || '15 A 20 DIAS UTEIS',
+    garantia: document.getElementById('inputGarantia').value.trim() || '3 ANOS',
+  };
+}
 
 // ========================
 // UI HELPERS
@@ -426,6 +457,7 @@ downloadBtn.addEventListener('click', () => {
 // PDF PROCESSING
 // ========================
 async function processFile(file) {
+  const CONFIG = getConfig();  // Read current values from inputs
   logEl.innerHTML = '';
   logEl.classList.remove('show');
   downloadBtn.classList.remove('show');
@@ -472,7 +504,7 @@ async function processFile(file) {
         log(`Cliente: ${clientName}`, 'ok');
 
         // Apply all 4 replacements on page 1
-        applyReplacements(page, width, height, fontBold, fontRegular);
+        applyReplacements(page, width, height, fontBold, fontRegular, CONFIG);
       }
     }
 
@@ -481,7 +513,7 @@ async function processFile(file) {
     const lastPage = pages[pages.length - 1];
     const { width: lastW, height: lastH } = lastPage.getSize();
     const obsPage = pdfDoc.addPage([lastW, lastH]);
-    addObservacoes(obsPage, lastW, lastH, fontBold, fontRegular, lastH - 80);
+    addObservacoes(obsPage, lastW, lastH, fontBold, fontRegular, lastH - 80, CONFIG);
     log('  ✓ Página de observações adicionada', 'ok');
 
     // Save modified PDF
@@ -645,7 +677,7 @@ async function extractClientName(pdfDoc, page, pageIndex) {
   return 'Cliente';
 }
 
-function applyReplacements(page, width, height, fontBold, fontRegular) {
+function applyReplacements(page, width, height, fontBold, fontRegular, CONFIG) {
   // A4 page: 595.28 x 841.89
   // Coordinates are from bottom-left in pdf-lib
   
@@ -791,7 +823,7 @@ function applyReplacements(page, width, height, fontBold, fontRegular) {
   log('  ✓ ITENS DO ORÇAMENTO → ITENS DO PEDIDO', 'ok');
 }
 
-function addObservacoes(page, width, height, fontBold, fontRegular, startY) {
+function addObservacoes(page, width, height, fontBold, fontRegular, startY, CONFIG) {
   const lineHeight = 14;
   const textX = 45;
   const textSize = 9;
@@ -810,8 +842,8 @@ function addObservacoes(page, width, height, fontBold, fontRegular, startY) {
   const lines = [
     { bold: true,  text: 'Informações adicionais:' },
     { bold: false, text: 'Nota fiscal será entregue junto com o produto no ato da instalação' },
-    { bold: false, text: 'Garantia de 3 anos em todos os produtos' },
-    { bold: false, text: 'Prazo de entrega de 15 a 20 dias úteis' },
+    { bold: false, text: 'Garantia de ' + CONFIG.garantia.toLowerCase() + ' em todos os produtos' },
+    { bold: false, text: 'Prazo de entrega de ' + CONFIG.prazoEntrega.toLowerCase() },
     { bold: false, text: 'Orientações de instalação: Instalação será agendada dentro do horário comercial' },
     { bold: false, text: '(período: manhã ou tarde)' },
     { bold: false, text: 'O cancelamento ou reagendamento pode ser feito até 24 horas antes.' },
