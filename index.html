@@ -295,6 +295,45 @@
 
   .download-btn.show { display: block; }
 
+  .filename-area {
+    display: none;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px 20px;
+    margin-bottom: 16px;
+  }
+
+  .filename-area.show { display: block; }
+
+  .filename-label {
+    font-size: 12px;
+    color: var(--text-dim);
+    display: block;
+    margin-bottom: 8px;
+  }
+
+  .filename-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .filename-prefix, .filename-suffix {
+    color: var(--text-dim);
+    font-size: 14px;
+    white-space: nowrap;
+  }
+
+  .client-input {
+    flex: 1;
+    text-align: left !important;
+    font-size: 14px !important;
+    padding: 6px 10px !important;
+    border-color: var(--gold) !important;
+    color: var(--gold) !important;
+  }
+
   .download-btn:hover {
     transform: translateY(-1px);
     box-shadow: 0 8px 24px rgba(196, 162, 37, 0.3);
@@ -365,6 +404,15 @@
 
   <div class="log" id="log"></div>
 
+  <div class="filename-area" id="filenameArea">
+    <label class="filename-label">Nome do arquivo:</label>
+    <div class="filename-row">
+      <span class="filename-prefix">Pedido de compra</span>
+      <input type="text" id="inputClientName" class="edit-input client-input" placeholder="Nome do cliente">
+      <span class="filename-suffix">.pdf</span>
+    </div>
+  </div>
+
   <button class="download-btn" id="downloadBtn">⬇ Baixar Pedido de Compra</button>
 
   <div class="footer">
@@ -396,6 +444,8 @@ const statusTitle = $('statusTitle');
 const statusDetail = $('statusDetail');
 const logEl = $('log');
 const downloadBtn = $('downloadBtn');
+const filenameArea = $('filenameArea');
+const inputClientName = $('inputClientName');
 
 let outputBlob = null;
 let outputFilename = '';
@@ -445,10 +495,12 @@ fileInput.addEventListener('change', e => {
 
 downloadBtn.addEventListener('click', () => {
   if (!outputBlob) return;
+  const name = inputClientName.value.trim() || 'Cliente';
+  const filename = `Pedido de compra ${name}.pdf`;
   const url = URL.createObjectURL(outputBlob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = outputFilename;
+  a.download = filename;
   a.click();
   URL.revokeObjectURL(url);
 });
@@ -461,6 +513,7 @@ async function processFile(file) {
   logEl.innerHTML = '';
   logEl.classList.remove('show');
   downloadBtn.classList.remove('show');
+  filenameArea.classList.remove('show');
   outputBlob = null;
 
   setStatus('Processando...', file.name, 'processing');
@@ -522,9 +575,11 @@ async function processFile(file) {
     outputFilename = `Pedido de compra ${safeName}.pdf`;
     outputBlob = new Blob([modifiedBytes], { type: 'application/pdf' });
 
-    log(`Arquivo gerado: ${outputFilename}`, 'ok');
-    setStatus('Concluído!', outputFilename, 'success');
-    downloadBtn.textContent = `⬇ Baixar: ${outputFilename}`;
+    log(`Arquivo gerado com sucesso!`, 'ok');
+    setStatus('Concluído!', `Pedido de compra ${safeName}.pdf`, 'success');
+    inputClientName.value = safeName;
+    filenameArea.classList.add('show');
+    downloadBtn.textContent = `⬇ Baixar Pedido de Compra`;
     downloadBtn.classList.add('show');
 
   } catch (err) {
