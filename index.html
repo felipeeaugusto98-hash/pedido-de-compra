@@ -346,6 +346,111 @@
     font-size: 12px;
     opacity: 0.6;
   }
+
+  /* Signature */
+  .signature-section {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px 20px;
+    margin-bottom: 24px;
+  }
+
+  .signature-toggle {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .signature-toggle input { display: none; }
+
+  .toggle-slider {
+    width: 40px;
+    height: 22px;
+    background: var(--border);
+    border-radius: 11px;
+    position: relative;
+    transition: background 0.3s;
+    flex-shrink: 0;
+  }
+
+  .toggle-slider::after {
+    content: '';
+    position: absolute;
+    width: 16px;
+    height: 16px;
+    background: var(--text-dim);
+    border-radius: 50%;
+    top: 3px;
+    left: 3px;
+    transition: all 0.3s;
+  }
+
+  .signature-toggle input:checked + .toggle-slider {
+    background: var(--gold);
+  }
+
+  .signature-toggle input:checked + .toggle-slider::after {
+    left: 21px;
+    background: #000;
+  }
+
+  .toggle-label {
+    font-size: 14px;
+    color: var(--text);
+  }
+
+  .signature-area {
+    display: none;
+    margin-top: 16px;
+  }
+
+  .signature-area.show { display: block; }
+
+  .signature-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+    font-size: 13px;
+    color: var(--text-dim);
+  }
+
+  .clear-btn {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    border-radius: 6px;
+    padding: 4px 12px;
+    font-size: 12px;
+    cursor: pointer;
+    font-family: 'DM Sans', sans-serif;
+    transition: all 0.2s;
+  }
+
+  .clear-btn:hover {
+    border-color: var(--error);
+    color: var(--error);
+  }
+
+  #signatureCanvas {
+    width: 100%;
+    height: 150px;
+    background: #fff;
+    border-radius: 10px;
+    cursor: crosshair;
+    touch-action: none;
+  }
+
+  .signature-hint {
+    color: var(--text-dim);
+    font-size: 11px;
+    margin-top: 6px;
+    opacity: 0.6;
+    text-align: center;
+  }
 </style>
 </head>
 <body>
@@ -392,6 +497,23 @@
     <h3>Arraste o PDF do orçamento aqui</h3>
     <p>ou clique para selecionar o arquivo</p>
     <input type="file" id="fileInput" accept=".pdf">
+  </div>
+
+  <!-- Assinatura Digital -->
+  <div class="signature-section">
+    <label class="signature-toggle">
+      <input type="checkbox" id="signatureEnabled">
+      <span class="toggle-slider"></span>
+      <span class="toggle-label">Incluir campo de assinatura do cliente</span>
+    </label>
+    <div class="signature-area" id="signatureArea">
+      <div class="signature-header">
+        <span>Assinatura do cliente:</span>
+        <button class="clear-btn" id="clearSignature">Limpar</button>
+      </div>
+      <canvas id="signatureCanvas" width="500" height="150"></canvas>
+      <p class="signature-hint">Desenhe a assinatura com o mouse ou o dedo (celular)</p>
+    </div>
   </div>
 
   <div class="status" id="status">
@@ -506,6 +628,98 @@ downloadBtn.addEventListener('click', () => {
 });
 
 // ========================
+// SIGNATURE CANVAS
+// ========================
+const sigCanvas = $('signatureCanvas');
+const sigCtx = sigCanvas.getContext('2d');
+const sigCheckbox = $('signatureEnabled');
+const sigArea = $('signatureArea');
+const clearBtn = $('clearSignature');
+let isDrawing = false;
+let hasSignature = false;
+
+// Toggle signature area
+sigCheckbox.addEventListener('change', () => {
+  sigArea.classList.toggle('show', sigCheckbox.checked);
+});
+
+// Clear signature
+clearBtn.addEventListener('click', () => {
+  sigCtx.clearRect(0, 0, sigCanvas.width, sigCanvas.height);
+  hasSignature = false;
+});
+
+// Resize canvas to actual display size
+function resizeCanvas() {
+  const rect = sigCanvas.getBoundingClientRect();
+  sigCanvas.width = rect.width * 2;  // 2x for retina
+  sigCanvas.height = rect.height * 2;
+  sigCtx.scale(2, 2);
+  sigCtx.strokeStyle = '#000';
+  sigCtx.lineWidth = 2;
+  sigCtx.lineCap = 'round';
+  sigCtx.lineJoin = 'round';
+}
+
+// Get position from mouse or touch event
+function getPos(e) {
+  const rect = sigCanvas.getBoundingClientRect();
+  const touch = e.touches ? e.touches[0] : e;
+  return {
+    x: touch.clientX - rect.left,
+    y: touch.clientY - rect.top
+  };
+}
+
+// Mouse events
+sigCanvas.addEventListener('mousedown', e => {
+  isDrawing = true;
+  const pos = getPos(e);
+  sigCtx.beginPath();
+  sigCtx.moveTo(pos.x, pos.y);
+});
+
+sigCanvas.addEventListener('mousemove', e => {
+  if (!isDrawing) return;
+  const pos = getPos(e);
+  sigCtx.lineTo(pos.x, pos.y);
+  sigCtx.stroke();
+  hasSignature = true;
+});
+
+sigCanvas.addEventListener('mouseup', () => isDrawing = false);
+sigCanvas.addEventListener('mouseleave', () => isDrawing = false);
+
+// Touch events (mobile)
+sigCanvas.addEventListener('touchstart', e => {
+  e.preventDefault();
+  isDrawing = true;
+  const pos = getPos(e);
+  sigCtx.beginPath();
+  sigCtx.moveTo(pos.x, pos.y);
+}, { passive: false });
+
+sigCanvas.addEventListener('touchmove', e => {
+  e.preventDefault();
+  if (!isDrawing) return;
+  const pos = getPos(e);
+  sigCtx.lineTo(pos.x, pos.y);
+  sigCtx.stroke();
+  hasSignature = true;
+}, { passive: false });
+
+sigCanvas.addEventListener('touchend', () => isDrawing = false);
+
+// Init canvas on first show
+const observer = new MutationObserver(() => {
+  if (sigArea.classList.contains('show')) {
+    resizeCanvas();
+    observer.disconnect();
+  }
+});
+observer.observe(sigArea, { attributes: true, attributeFilter: ['class'] });
+
+// ========================
 // PDF PROCESSING
 // ========================
 async function processFile(file) {
@@ -562,12 +776,51 @@ async function processFile(file) {
     }
 
     // Add Observações on a new page at the end
-    // This is the most reliable approach - always adds a clean page
     const lastPage = pages[pages.length - 1];
     const { width: lastW, height: lastH } = lastPage.getSize();
     const obsPage = pdfDoc.addPage([lastW, lastH]);
     addObservacoes(obsPage, lastW, lastH, fontBold, fontRegular, lastH - 80, CONFIG);
     log('  ✓ Página de observações adicionada', 'ok');
+
+    // Add signature if enabled and drawn
+    if (sigCheckbox.checked && hasSignature) {
+      const sigDataUrl = sigCanvas.toDataURL('image/png');
+      const sigBytes = Uint8Array.from(atob(sigDataUrl.split(',')[1]), c => c.charCodeAt(0));
+      const sigImage = await pdfDoc.embedPng(sigBytes);
+      
+      const sigWidth = 200;
+      const sigHeight = (sigImage.height / sigImage.width) * sigWidth;
+      
+      // Draw signature line and label on the obs page
+      const sigY = 120;  // near bottom of page
+      
+      // Line
+      obsPage.drawLine({
+        start: { x: (lastW - 250) / 2, y: sigY + sigHeight + 10 },
+        end: { x: (lastW + 250) / 2, y: sigY + sigHeight + 10 },
+        thickness: 0.5,
+        color: rgb(0, 0, 0),
+      });
+      
+      // Signature image
+      obsPage.drawImage(sigImage, {
+        x: (lastW - sigWidth) / 2,
+        y: sigY + 15,
+        width: sigWidth,
+        height: sigHeight,
+      });
+      
+      // Label
+      obsPage.drawText('Assinatura do cliente', {
+        x: (lastW - fontRegular.widthOfTextAtSize('Assinatura do cliente', 9)) / 2,
+        y: sigY,
+        size: 9,
+        font: fontRegular,
+        color: rgb(0.4, 0.4, 0.4),
+      });
+      
+      log('  ✓ Assinatura do cliente adicionada', 'ok');
+    }
 
     // Save modified PDF
     const modifiedBytes = await pdfDoc.save();
