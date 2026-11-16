@@ -1003,12 +1003,14 @@ async function processFile(file) {
       // we'll use a coordinate-based approach for A4 pages (595.28 x 841.89)
       
       if (i === 0) {
-        // Try to extract text to find client name
+        // Try to extract text to find client name and order number
         clientName = await extractClientName(pdfDoc, page, i);
         log(`Cliente: ${clientName}`, 'ok');
+        const orderNumber = await extractOrderNumber(pdfDoc, page);
+        log(`Nº do pedido: ${orderNumber || '(não encontrado)'}`, orderNumber ? 'ok' : 'warn');
 
         // Apply all 4 replacements on page 1
-        applyReplacements(page, width, height, fontBold, fontRegular, CONFIG);
+        applyReplacements(page, width, height, fontBold, fontRegular, CONFIG, orderNumber);
       }
     }
 
@@ -1228,36 +1230,131 @@ async function extractClientName(pdfDoc, page, pageIndex) {
   return 'Cliente';
 }
 
-function applyReplacements(page, width, height, fontBold, fontRegular, CONFIG) {
+async function extractOrderNumber(pdfDoc, page) {
+  // Extract the order number (e.g. "001002") from the title bar
+  try {
+    const ref = page.node.get(PDFLib.PDFName.of('Contents'));
+    if (!ref) return '';
+
+    const contentsObj = pdfDoc.context.lookup(ref);
+    if (!contentsObj) return '';
+
+    let streamData;
+    if (contentsObj.constructor.name === 'PDFArray') {
+      let combined = '';
+      for (let i = 0; i < contentsObj.size(); i++) {
+        const streamRef = contentsObj.get(i);
+        const stream = pdfDoc.context.lookup(streamRef);
+        if (stream) {
+          try {
+            const decoded = stream.decodeContents ?
+              new TextDecoder('latin1').decode(stream.decodeContents()) :
+              new TextDecoder('latin1').decode(stream.getContents());
+            combined += decoded;
+          } catch(e) {}
+        }
+      }
+      streamData = combined;
+    } else {
+      try {
+        streamData = contentsObj.decodeContents ?
+          new TextDecoder('latin1').decode(contentsObj.decodeContents()) :
+          new TextDecoder('latin1').decode(contentsObj.getContents());
+      } catch(e) {
+        return '';
+      }
+    }
+
+    if (!streamData) return '';
+
+    // Extract all text parts
+    const textParts = [];
+    const tjRegex = /\(([^)]*)\)\s*Tj/g;
+    let match;
+    while ((match = tjRegex.exec(streamData)) !== null) {
+      textParts.push(match[1]);
+    }
+    const tjArrayRegex = /\[([^\]]*)\]\s*TJ/g;
+    while ((match = tjArrayRegex.exec(streamData)) !== null) {
+      const inner = match[1];
+      const strRegex = /\(([^)]*)\)/g;
+      let strMatch;
+      let combined = '';
+      while ((strMatch = strRegex.exec(inner)) !== null) {
+        combined += strMatch[1];
+      }
+      if (combined) textParts.push(combined);
+    }
+
+    const fullText = textParts.join(' ');
+    // Match number after "Nº:" or "N\\272:" (octal for º)
+    const numMatch = fullText.match(/N(?:º|\\272|º):\s*(\d{3,})/i);
+    if (numMatch) return numMatch[1];
+
+    // Fallback: find a 6-digit number near title keywords
+    const numMatch2 = fullText.match(/(?:VENDA|COMPRA|PEDIDO)[^0-9]*(\d{6})/i);
+    if (numMatch2) return numMatch2[1];
+
+  } catch(e) {
+    console.warn('Could not extract order number:', e);
+  }
+  return '';
+}
+
+function applyReplacements(page, width, height, fontBold, fontRegular, CONFIG, orderNumber) {
   // A4 page: 595.28 x 841.89
   // Coordinates are from bottom-left in pdf-lib
   
   // The positions below are calibrated for the specific PDF layout from Persianas em Casa
   // We use relative positions based on the document structure visible in the screenshots
 
-  // === 1. "ORÇAMENTO DE VENDA Nº:" → "PEDIDO DE COMPRA Nº:" (keep number 000493) ===
-  // Title bar rect: x0=28.62, top=113.66, bot=142.36 (pdfplumber)
-  // Text ends at x=367.79, number "000493" starts at x=372.26
+  // === 1. "ORÇAMENTO DE VENDA Nº:" → "PEDIDO DE COMPRA Nº: XXXXXX" ===
+  // Cover ENTIRE title bar (full width) to handle all PDF variants and reprocessing
+  // Title bar: x=28.62 to x=566.56, top=113 bot=144 (pdfplumber coords)
   const titleY_bottom = height - 136.33;
   const titleFontSize = 14.29;
-  
-  // Cover only left part of title bar (before the number)
+
   page.drawRectangle({
-    x: 28.62,
-    y: height - 142.36,
-    width: 343,
-    height: 28.70,
+    x: 28,
+    y: height - 144,
+    width: 540,
+    height: 32,
     color: rgb(0.753, 0.753, 0.753),  // exact original gray
     borderWidth: 0,
   });
-  
-  // Draw "PEDIDO DE COMPRA Nº:" ending right before number
-  const titleText = 'PEDIDO DE COMPRA Nº:';
-  const titleWidth = fontBold.widthOfTextAtSize(titleText, titleFontSize);
-  const titleX = 372.26 - titleWidth - 4;
-  
-  page.drawText(titleText, {
-    x: titleX,
+
+  // Draw "PEDIDO DE COMPRA Nº: XXXXXX" centered in the bar
+  const titleNum = orderNumber || '';
+  const titleFull = 'PEDIDO DE COMPRA N';
+  const superO = 'o';
+  const titleColon = ': ' + titleNum;
+
+  const wMain = fontBold.widthOfTextAtSize(titleFull, titleFontSize);
+  const superSize = titleFontSize * 0.7;
+  const wSuper = fontBold.widthOfTextAtSize(superO, superSize);
+  const wColon = fontBold.widthOfTextAtSize(titleColon, titleFontSize);
+  const totalTitleW = wMain + wSuper + wColon;
+
+  const barLeft = 28;
+  const barRight = 568;
+  const titleStartX = barLeft + ((barRight - barLeft) - totalTitleW) / 2;
+
+  page.drawText(titleFull, {
+    x: titleStartX,
+    y: titleY_bottom,
+    size: titleFontSize,
+    font: fontBold,
+    color: rgb(0, 0, 0),
+  });
+  page.drawText(superO, {
+    x: titleStartX + wMain,
+    y: titleY_bottom + titleFontSize * 0.25,
+    size: superSize,
+    font: fontBold,
+    color: rgb(0, 0, 0),
+  });
+  page.drawText(titleColon, {
+    x: titleStartX + wMain + wSuper,
     y: titleY_bottom,
     size: titleFontSize,
     font: fontBold,
@@ -1266,33 +1363,33 @@ function applyReplacements(page, width, height, fontBold, fontRegular, CONFIG) {
 
   // === 2. PRAZO DE ENTREGA value → redraw label + new value ===
   // The label "PRAZO DE ENTREGA:" position varies between PDFs (x=337 to x=452)
-  // Solution: cover the entire area and redraw both label and value
+  // Solution: cover the entire area from x=280 and redraw both label and value
   const prazoY_bottom = height - 198.79;
   const prazoFontSize = 7.7;
-  
-  // Cover entire right side of the row (from x=335 to end)
+
+  // Cover entire right side of the row (from x=280 to end) to handle all PDF variants
   page.drawRectangle({
-    x: 335,
-    y: height - 204.70,
-    width: 231.66,
-    height: 20.78,
+    x: 280,
+    y: height - 206,
+    width: 290,
+    height: 23,
     color: rgb(1, 1, 1),
     borderWidth: 0,
   });
-  
+
   // Redraw "PRAZO DE ENTREGA:" label
   page.drawText('PRAZO DE ENTREGA:', {
-    x: 338,
+    x: 285,
     y: prazoY_bottom,
     size: prazoFontSize,
     font: fontBold,
     color: rgb(0, 0, 0),
   });
-  
+
   // Draw new value after label
   const prazoLabelWidth = fontBold.widthOfTextAtSize('PRAZO DE ENTREGA:  ', prazoFontSize);
   page.drawText(CONFIG.prazoEntrega, {
-    x: 338 + prazoLabelWidth,
+    x: 285 + prazoLabelWidth,
     y: prazoY_bottom,
     size: prazoFontSize,
     font: fontRegular,
@@ -1305,33 +1402,32 @@ function applyReplacements(page, width, height, fontBold, fontRegular, CONFIG) {
   // "0 DIAS" can extend to x=219
   const validadeY_bottom = height - 240.35;
   const validadeFontSize = 7.7;
-  
-  // Cover the ENTIRE row with original cell backgrounds
-  // Left margin (gray): x=28.62 to 59.50
+
+  // Cover the ENTIRE row with generous rectangles to handle all PDF variants
+  // Left margin (gray): x=27 to 60
   page.drawRectangle({
-    x: 28.62,
-    y: height - 246.26,
-    width: 30.88,
-    height: 20.78,
+    x: 27,
+    y: height - 248,
+    width: 33,
+    height: 25,
     color: rgb(0.937, 0.937, 0.937),
     borderWidth: 0,
   });
-  // Label + value area (white + gray): x=59.51 to 566.66
-  // Cover everything with white first, then gray over value area
+  // Label area (white): x=59 to 193
   page.drawRectangle({
-    x: 59.51,
-    y: height - 246.26,
-    width: 507.15,
-    height: 20.78,
+    x: 59,
+    y: height - 248,
+    width: 135,
+    height: 25,
     color: rgb(1, 1, 1),
     borderWidth: 0,
   });
-  // Gray over value area (from x=192.99 to end, matching original cell)
+  // Value area (gray): x=191 to 568 - covers "0 DIAS" and any residual text
   page.drawRectangle({
-    x: 192.99,
-    y: height - 246.26,
-    width: 373.67,
-    height: 20.78,
+    x: 191,
+    y: height - 248,
+    width: 377,
+    height: 25,
     color: rgb(0.937, 0.937, 0.937),
     borderWidth: 0,
   });
@@ -1457,7 +1553,8 @@ async function processFileReturnBlob(file) {
     const { width, height } = page.getSize();
     if (i === 0) {
       clientName = await extractClientName(pdfDoc, page, i);
-      applyReplacements(page, width, height, fontBold, fontRegular, CONFIG);
+      const orderNumber = await extractOrderNumber(pdfDoc, page);
+      applyReplacements(page, width, height, fontBold, fontRegular, CONFIG, orderNumber);
     }
   }
 
