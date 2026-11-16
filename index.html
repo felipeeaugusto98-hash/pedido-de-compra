@@ -1006,11 +1006,9 @@ async function processFile(file) {
         // Try to extract text to find client name and order number
         clientName = await extractClientName(pdfDoc, page, i);
         log(`Cliente: ${clientName}`, 'ok');
-        const orderNumber = await extractOrderNumber(pdfDoc, page);
-        log(`Nº do pedido: ${orderNumber || '(não encontrado)'}`, orderNumber ? 'ok' : 'warn');
 
-        // Apply all 4 replacements on page 1
-        applyReplacements(page, width, height, fontBold, fontRegular, CONFIG, orderNumber);
+        // Apply all 4 replacements on page 1 (number is preserved from original PDF)
+        applyReplacements(page, width, height, fontBold, fontRegular, CONFIG);
       }
     }
 
@@ -1301,45 +1299,46 @@ async function extractOrderNumber(pdfDoc, page) {
   return '';
 }
 
-function applyReplacements(page, width, height, fontBold, fontRegular, CONFIG, orderNumber) {
+function applyReplacements(page, width, height, fontBold, fontRegular, CONFIG) {
   // A4 page: 595.28 x 841.89
   // Coordinates are from bottom-left in pdf-lib
   
   // The positions below are calibrated for the specific PDF layout from Persianas em Casa
   // We use relative positions based on the document structure visible in the screenshots
 
-  // === 1. "ORÇAMENTO DE VENDA Nº:" → "PEDIDO DE COMPRA Nº: XXXXXX" ===
-  // Cover ENTIRE title bar (full width) to handle all PDF variants and reprocessing
-  // Title bar: x=28.62 to x=566.56, top=113 bot=144 (pdfplumber coords)
+  // === 1. "ORÇAMENTO DE VENDA Nº:" or "PEDIDO DE VENDA Nº:" → "PEDIDO DE COMPRA Nº:" ===
+  // IMPORTANT: Cover ONLY the text area, NEVER the number!
+  // Number position varies: x=356 ("PEDIDO DE VENDA") to x=372 ("ORÇAMENTO DE VENDA")
+  // We cover up to x=352 to preserve the number in all variants
   const titleY_bottom = height - 136.33;
   const titleFontSize = 14.29;
 
+  // Cover only left portion of title bar (text area, before the number)
   page.drawRectangle({
     x: 28,
     y: height - 144,
-    width: 540,
+    width: 326,  // x=28 to x=354, stops before number at x=356+
     height: 32,
     color: rgb(0.753, 0.753, 0.753),  // exact original gray
     borderWidth: 0,
   });
 
-  // Draw "PEDIDO DE COMPRA Nº: XXXXXX" centered in the bar
-  const titleNum = orderNumber || '';
-  const titleFull = 'PEDIDO DE COMPRA N';
+  // Draw "PEDIDO DE COMPRA Nº:" positioned to end right before the number
+  // "PEDIDO DE COMPRA Nº:" ending at x=352, number starts at x=356
+  const titleText = 'PEDIDO DE COMPRA N';
   const superO = 'o';
-  const titleColon = ': ' + titleNum;
+  const titleColon = ':';
 
-  const wMain = fontBold.widthOfTextAtSize(titleFull, titleFontSize);
+  const wMain = fontBold.widthOfTextAtSize(titleText, titleFontSize);
   const superSize = titleFontSize * 0.7;
   const wSuper = fontBold.widthOfTextAtSize(superO, superSize);
   const wColon = fontBold.widthOfTextAtSize(titleColon, titleFontSize);
   const totalTitleW = wMain + wSuper + wColon;
 
-  const barLeft = 28;
-  const barRight = 568;
-  const titleStartX = barLeft + ((barRight - barLeft) - totalTitleW) / 2;
+  // Right-align the text to end at x=352 (just before number)
+  const titleStartX = 352 - totalTitleW;
 
-  page.drawText(titleFull, {
+  page.drawText(titleText, {
     x: titleStartX,
     y: titleY_bottom,
     size: titleFontSize,
@@ -1403,31 +1402,23 @@ function applyReplacements(page, width, height, fontBold, fontRegular, CONFIG, o
   const validadeY_bottom = height - 240.35;
   const validadeFontSize = 7.7;
 
-  // Cover the ENTIRE row with generous rectangles to handle all PDF variants
-  // Left margin (gray): x=27 to 60
+  // Cover the GARANTIA row — height reduced to 22 to avoid covering CONDIÇÕES DE PGTO below
+  // VALIDADE row: pdfplumber top=222 to bot=244 | CONDIÇÕES starts at top=246
+  // Left side (white): covers label area
   page.drawRectangle({
     x: 27,
-    y: height - 248,
-    width: 33,
-    height: 25,
-    color: rgb(0.937, 0.937, 0.937),
-    borderWidth: 0,
-  });
-  // Label area (white): x=59 to 193
-  page.drawRectangle({
-    x: 59,
-    y: height - 248,
-    width: 135,
-    height: 25,
+    y: height - 244,
+    width: 115,
+    height: 22,
     color: rgb(1, 1, 1),
     borderWidth: 0,
   });
-  // Value area (gray): x=191 to 568 - covers "0 DIAS" and any residual text
+  // Right side (gray): covers value area
   page.drawRectangle({
-    x: 191,
-    y: height - 248,
-    width: 377,
-    height: 25,
+    x: 140,
+    y: height - 244,
+    width: 428,
+    height: 22,
     color: rgb(0.937, 0.937, 0.937),
     borderWidth: 0,
   });
@@ -1553,8 +1544,7 @@ async function processFileReturnBlob(file) {
     const { width, height } = page.getSize();
     if (i === 0) {
       clientName = await extractClientName(pdfDoc, page, i);
-      const orderNumber = await extractOrderNumber(pdfDoc, page);
-      applyReplacements(page, width, height, fontBold, fontRegular, CONFIG, orderNumber);
+      applyReplacements(page, width, height, fontBold, fontRegular, CONFIG);
     }
   }
 
